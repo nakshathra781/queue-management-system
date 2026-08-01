@@ -2,13 +2,18 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 
+const connectDB = require("./config/db");
+const authRoutes = require("./routes/authRoutes");
+
 const app = express();
+connectDB();
 
 // Allows frontend to send requests to backend
 app.use(cors());
 
 // Allows backend to read JSON data
 app.use(express.json());
+app.use("/api/auth", authRoutes);
 
 // Simple test route
 app.get("/", (req, res) => {
