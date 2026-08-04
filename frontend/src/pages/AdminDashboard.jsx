@@ -1,108 +1,173 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { api } from '../services/api';
-import { SkeletonStats, SkeletonTable } from '../components/SkeletonLoader';
-import { EmptyState } from '../components/EmptyState';
-import { ToastNotification } from '../components/ToastNotification';
-import { Users, PhoneCall, CheckCircle2, FastForward, Clock, RefreshCw, Filter, Shield, Activity, BarChart3, AlertCircle } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import { api } from "../services/api";
+import { SkeletonStats, SkeletonTable } from "../components/SkeletonLoader";
+import { EmptyState } from "../components/EmptyState";
+import { ToastNotification } from "../components/ToastNotification";
+import {
+  Users,
+  PhoneCall,
+  CheckCircle2,
+  FastForward,
+  Clock,
+  RefreshCw,
+  Shield,
+  Activity,
+} from "lucide-react";
 
 export const AdminDashboard = () => {
   const { user } = useAuth();
+
   const [tokens, setTokens] = useState([]);
-  const [stats, setStats] = useState({
-    totalToday: 0,
-    waitingCount: 0,
-    calledCount: 0,
-    completedCount: 0,
-    skippedCount: 0
-  });
-
-  const [counterNumber, setCounterNumber] = useState(user?.counterNumber || 1);
+  const [counterNumber, setCounterNumber] = useState(
+    user?.counterNumber || 1
+  );
   const [loading, setLoading] = useState(true);
-  const [actionTokenId, setActionTokenId] = useState(null); // tracking button loading states
+  const [actionTokenId, setActionTokenId] = useState(null);
   const [toast, setToast] = useState(null);
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState("all");
 
-  const fetchAdminData = async () => {
-    try {
+  const fetchAdminData = async (showLoader = false) => {
+  try {
+    if (showLoader) {
       setLoading(true);
-      const [queueRes, statsRes] = await Promise.all([
-        api.getQueue(),
-        api.getStats()
-      ]);
+    }
 
-      if (queueRes.success) setTokens(queueRes.data || []);
-      if (statsRes.success) setStats(statsRes.data || {});
-    } catch (err) {
-      setToast({ type: 'error', message: err.message || 'Error fetching admin queue data' });
+      const response = await api.getQueue();
+
+      // Backend returns: { count: number, tokens: [...] }
+      const queueTokens = response.tokens || response.data || [];
+
+      setTokens(Array.isArray(queueTokens) ? queueTokens : []);
+    } catch (error) {
+      setToast({
+        type: "error",
+        message: error.message || "Unable to load the admin queue",
+      });
     } finally {
       setLoading(false);
     }
   };
-
   useEffect(() => {
-    fetchAdminData();
-    const interval = setInterval(fetchAdminData, 8000); // Polling every 8s
-    return () => clearInterval(interval);
-  }, []);
+  fetchAdminData(true);
+
+  const interval = setInterval(() => {
+    fetchAdminData(false);
+  }, 8000);
+
+  return () => clearInterval(interval);
+}, []);
 
   const handleCallToken = async (tokenId) => {
-    setActionTokenId(tokenId);
     try {
-      const res = await api.callToken(tokenId, counterNumber);
-      if (res.success) {
-        setToast({ type: 'success', message: res.message || 'Token called successfully' });
-        await fetchAdminData();
-      } else {
-        setToast({ type: 'error', message: res.message || 'Failed to call token' });
-      }
-    } catch (err) {
-      setToast({ type: 'error', message: err.message || 'Call action failed' });
+      setActionTokenId(tokenId);
+
+      await api.callToken(tokenId);
+
+      setToast({
+        type: "success",
+        message: `Token called successfully at Counter ${counterNumber}`,
+      });
+
+      await fetchAdminData();
+    } catch (error) {
+      setToast({
+        type: "error",
+        message: error.message || "Unable to call token",
+      });
     } finally {
       setActionTokenId(null);
     }
   };
 
   const handleCompleteToken = async (tokenId) => {
-    setActionTokenId(tokenId);
     try {
-      const res = await api.completeToken(tokenId);
-      if (res.success) {
-        setToast({ type: 'success', message: res.message || 'Token completed' });
-        await fetchAdminData();
-      } else {
-        setToast({ type: 'error', message: res.message || 'Failed to complete token' });
-      }
-    } catch (err) {
-      setToast({ type: 'error', message: err.message || 'Complete action failed' });
+      setActionTokenId(tokenId);
+
+      await api.completeToken(tokenId);
+
+      setToast({
+        type: "success",
+        message: "Token completed successfully",
+      });
+
+      await fetchAdminData();
+    } catch (error) {
+      setToast({
+        type: "error",
+        message: error.message || "Unable to complete token",
+      });
     } finally {
       setActionTokenId(null);
     }
   };
 
   const handleSkipToken = async (tokenId) => {
-    setActionTokenId(tokenId);
     try {
-      const res = await api.skipToken(tokenId);
-      if (res.success) {
-        setToast({ type: 'warning', message: res.message || 'Token skipped' });
-        await fetchAdminData();
-      } else {
-        setToast({ type: 'error', message: res.message || 'Failed to skip token' });
-      }
-    } catch (err) {
-      setToast({ type: 'error', message: err.message || 'Skip action failed' });
+      setActionTokenId(tokenId);
+
+      await api.skipToken(tokenId);
+
+      setToast({
+        type: "warning",
+        message: "Token skipped successfully",
+      });
+
+      await fetchAdminData();
+    } catch (error) {
+      setToast({
+        type: "error",
+        message: error.message || "Unable to skip token",
+      });
     } finally {
       setActionTokenId(null);
     }
   };
 
-  const filteredTokens = tokens.filter(t => {
-    if (statusFilter === 'all') return true;
-    return t.status === statusFilter;
+  const stats = useMemo(() => {
+    return {
+      totalToday: tokens.length,
+      waitingCount: tokens.filter(
+        (token) => token.status === "waiting"
+      ).length,
+      calledCount: tokens.filter(
+        (token) => token.status === "called"
+      ).length,
+      completedCount: tokens.filter(
+        (token) => token.status === "completed"
+      ).length,
+      skippedCount: tokens.filter(
+        (token) => token.status === "skipped"
+      ).length,
+    };
+  }, [tokens]);
+
+  const filteredTokens = tokens.filter((token) => {
+    if (statusFilter === "all") return true;
+
+    return token.status === statusFilter;
   });
 
-  const nextWaitingToken = tokens.find(t => t.status === 'waiting');
+  const nextWaitingToken = tokens.find(
+    (token) => token.status === "waiting"
+  );
+
+  const getCustomerName = (token) => {
+    return (
+      token.user?.name ||
+      token.customerName ||
+      token.userName ||
+      "Customer"
+    );
+  };
+
+  const getServiceName = (token) => {
+    return (
+      token.service?.name ||
+      token.serviceName ||
+      "General Service"
+    );
+  };
 
   return (
     <div className="dashboard-container">
@@ -114,38 +179,53 @@ export const AdminDashboard = () => {
         />
       )}
 
-      {/* Admin Dashboard Header */}
       <div className="dashboard-header">
         <div>
           <h1 className="dashboard-title">Counter Admin Console</h1>
+
           <p className="dashboard-subtitle">
-            Manage queue flow, call tickets to counters, and track real-time queue performance.
+            Manage queue flow, call tickets and update token statuses.
           </p>
         </div>
 
         <div className="admin-controls-group">
           <div className="counter-selector-badge">
             <Shield size={16} />
+
             <span>Counter:</span>
+
             <select
               value={counterNumber}
-              onChange={(e) => setCounterNumber(Number(e.target.value))}
+              onChange={(event) =>
+                setCounterNumber(Number(event.target.value))
+              }
               className="counter-select"
             >
-              {[1, 2, 3, 4, 5, 6].map(num => (
-                <option key={num} value={num}>Counter #{num}</option>
+              {[1, 2, 3, 4, 5, 6].map((number) => (
+                <option key={number} value={number}>
+                  Counter #{number}
+                </option>
               ))}
             </select>
           </div>
 
-          <button onClick={fetchAdminData} className="btn btn-secondary btn-icon-only" title="Refresh Queue">
-            <RefreshCw size={18} className={loading ? 'spinning' : ''} />
+          <button
+            type="button"
+            onClick={() => fetchAdminData(true)}
+            className="btn btn-secondary btn-icon-only"
+            title="Refresh Queue"
+            disabled={loading}
+          >
+            <RefreshCw
+              size={18}
+              className={loading ? "spinning" : ""}
+            />
+
             <span>Refresh</span>
           </button>
         </div>
       </div>
 
-      {/* Queue Stats Bar */}
       {loading ? (
         <SkeletonStats />
       ) : (
@@ -154,9 +234,15 @@ export const AdminDashboard = () => {
             <div className="stat-icon-bg primary">
               <Users size={22} />
             </div>
+
             <div className="stat-info">
-              <span className="stat-value">{stats.totalToday || 0}</span>
-              <span className="stat-label">Total Issued Today</span>
+              <span className="stat-value">
+                {stats.totalToday}
+              </span>
+
+              <span className="stat-label">
+                Active Queue
+              </span>
             </div>
           </div>
 
@@ -164,9 +250,15 @@ export const AdminDashboard = () => {
             <div className="stat-icon-bg warning">
               <Clock size={22} />
             </div>
+
             <div className="stat-info">
-              <span className="stat-value">{stats.waitingCount || 0}</span>
-              <span className="stat-label">Waiting in Queue</span>
+              <span className="stat-value">
+                {stats.waitingCount}
+              </span>
+
+              <span className="stat-label">
+                Waiting in Queue
+              </span>
             </div>
           </div>
 
@@ -174,9 +266,15 @@ export const AdminDashboard = () => {
             <div className="stat-icon-bg info">
               <PhoneCall size={22} />
             </div>
+
             <div className="stat-info">
-              <span className="stat-value">{stats.calledCount || 0}</span>
-              <span className="stat-label">Currently Serving</span>
+              <span className="stat-value">
+                {stats.calledCount}
+              </span>
+
+              <span className="stat-label">
+                Currently Called
+              </span>
             </div>
           </div>
 
@@ -184,48 +282,78 @@ export const AdminDashboard = () => {
             <div className="stat-icon-bg success">
               <CheckCircle2 size={22} />
             </div>
+
             <div className="stat-info">
-              <span className="stat-value">{stats.completedCount || 0}</span>
-              <span className="stat-label">Completed</span>
+              <span className="stat-value">
+                {stats.completedCount}
+              </span>
+
+              <span className="stat-label">
+                Completed
+              </span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Quick Action Panel */}
       {nextWaitingToken && (
         <div className="quick-call-banner">
           <div className="quick-call-info">
-            <span className="quick-call-label">NEXT IN LINE:</span>
-            <span className="quick-call-token">{nextWaitingToken.tokenNumber}</span>
-            <span className="quick-call-service">({nextWaitingToken.serviceName})</span>
+            <span className="quick-call-label">
+              NEXT IN LINE:
+            </span>
+
+            <span className="quick-call-token">
+              {nextWaitingToken.tokenNumber}
+            </span>
+
+            <span className="quick-call-service">
+              ({getServiceName(nextWaitingToken)})
+            </span>
           </div>
 
           <button
-            onClick={() => handleCallToken(nextWaitingToken._id)}
-            disabled={actionTokenId === nextWaitingToken._id}
+            type="button"
+            onClick={() =>
+              handleCallToken(nextWaitingToken._id)
+            }
+            disabled={
+              actionTokenId === nextWaitingToken._id
+            }
             className="btn btn-call-lg"
           >
             <PhoneCall size={20} />
-            <span>Call {nextWaitingToken.tokenNumber} to Counter #{counterNumber}</span>
+
+            <span>
+              Call {nextWaitingToken.tokenNumber} to Counter #
+              {counterNumber}
+            </span>
           </button>
         </div>
       )}
 
-      {/* Queue Table Card */}
       <div className="card queue-table-card">
         <div className="card-header flex-between">
           <div className="card-title">
             <Activity size={20} />
-            <span>Live Queue Queue Tokens</span>
+            <span>Live Queue Tokens</span>
           </div>
 
           <div className="filter-tabs">
-            {['all', 'waiting', 'called', 'completed', 'skipped'].map(status => (
+            {[
+              "all",
+              "waiting",
+              "called",
+              "completed",
+              "skipped",
+            ].map((status) => (
               <button
+                type="button"
                 key={status}
                 onClick={() => setStatusFilter(status)}
-                className={`filter-tab ${statusFilter === status ? 'active' : ''}`}
+                className={`filter-tab ${
+                  statusFilter === status ? "active" : ""
+                }`}
               >
                 {status.toUpperCase()}
               </button>
@@ -241,9 +369,9 @@ export const AdminDashboard = () => {
               icon={CheckCircle2}
               title="Queue Clean & Clear"
               description={
-                statusFilter === 'all'
-                  ? "There are currently no tokens in the queue system."
-                  : `No tokens found with '${statusFilter}' status.`
+                statusFilter === "all"
+                  ? "There are currently no active tokens."
+                  : `No ${statusFilter} tokens found.`
               }
             />
           ) : (
@@ -252,54 +380,85 @@ export const AdminDashboard = () => {
                 <thead>
                   <tr>
                     <th>Token #</th>
-                    <th>Customer Name</th>
+                    <th>Customer</th>
                     <th>Service</th>
                     <th>Issued At</th>
                     <th>Status</th>
-                    <th>Assigned Counter</th>
-                    <th className="text-right">Actions</th>
+                    <th>Position</th>
+                    <th className="text-right">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
+
                 <tbody>
-                  {filteredTokens.map(tok => (
-                    <tr key={tok._id} className={tok.status === 'called' ? 'row-highlight' : ''}>
-                      <td className="font-bold highlight-code">{tok.tokenNumber}</td>
-                      <td>{tok.userName}</td>
-                      <td>{tok.serviceName}</td>
-                      <td className="text-subtle">
-                        {new Date(tok.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {filteredTokens.map((token) => (
+                    <tr
+                      key={token._id}
+                      className={
+                        token.status === "called"
+                          ? "row-highlight"
+                          : ""
+                      }
+                    >
+                      <td className="font-bold highlight-code">
+                        {token.tokenNumber}
                       </td>
+
                       <td>
-                        <span className={`status-badge status-${tok.status}`}>
-                          {tok.status}
+                        {getCustomerName(token)}
+                      </td>
+
+                      <td>
+                        {getServiceName(token)}
+                      </td>
+
+                      <td className="text-subtle">
+                        {new Date(
+                          token.createdAt
+                        ).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </td>
+
+                      <td>
+                        <span
+                          className={`status-badge status-${token.status}`}
+                        >
+                          {token.status}
                         </span>
                       </td>
-                      <td>{tok.counterNumber ? `Counter ${tok.counterNumber}` : '-'}</td>
-                      <td className="text-right actions-cell">
-                        {tok.status === 'waiting' && (
-                          <button
-                            onClick={() => handleCallToken(tok._id)}
-                            disabled={actionTokenId === tok._id}
-                            className="btn btn-sm btn-call"
-                          >
-                            <PhoneCall size={14} />
-                            <span>Call</span>
-                          </button>
-                        )}
 
-                        {tok.status === 'called' && (
+                      <td>
+                        {token.queuePosition || "-"}
+                      </td>
+
+                      <td className="text-right actions-cell">
+                        {token.status === "waiting" && (
                           <>
                             <button
-                              onClick={() => handleCompleteToken(tok._id)}
-                              disabled={actionTokenId === tok._id}
-                              className="btn btn-sm btn-complete"
+                              type="button"
+                              onClick={() =>
+                                handleCallToken(token._id)
+                              }
+                              disabled={
+                                actionTokenId === token._id
+                              }
+                              className="btn btn-sm btn-call"
                             >
-                              <CheckCircle2 size={14} />
-                              <span>Complete</span>
+                              <PhoneCall size={14} />
+                              <span>Call</span>
                             </button>
+
                             <button
-                              onClick={() => handleSkipToken(tok._id)}
-                              disabled={actionTokenId === tok._id}
+                              type="button"
+                              onClick={() =>
+                                handleSkipToken(token._id)
+                              }
+                              disabled={
+                                actionTokenId === token._id
+                              }
                               className="btn btn-sm btn-skip"
                             >
                               <FastForward size={14} />
@@ -308,8 +467,45 @@ export const AdminDashboard = () => {
                           </>
                         )}
 
-                        {(tok.status === 'completed' || tok.status === 'skipped') && (
-                          <span className="text-subtle text-sm">Resolved</span>
+                        {token.status === "called" && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleCompleteToken(token._id)
+                              }
+                              disabled={
+                                actionTokenId === token._id
+                              }
+                              className="btn btn-sm btn-complete"
+                            >
+                              <CheckCircle2 size={14} />
+                              <span>Complete</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleSkipToken(token._id)
+                              }
+                              disabled={
+                                actionTokenId === token._id
+                              }
+                              className="btn btn-sm btn-skip"
+                            >
+                              <FastForward size={14} />
+                              <span>Skip</span>
+                            </button>
+                          </>
+                        )}
+
+                        {[
+                          "completed",
+                          "skipped",
+                        ].includes(token.status) && (
+                          <span className="text-subtle text-sm">
+                            Resolved
+                          </span>
                         )}
                       </td>
                     </tr>

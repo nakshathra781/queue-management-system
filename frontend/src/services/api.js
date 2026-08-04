@@ -1,122 +1,129 @@
-const API_BASE_URL = '/api';
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
 const getHeaders = () => {
-  const token = localStorage.getItem('queueflow_token');
+  const token =
+    localStorage.getItem("queueflow_token") ||
+    localStorage.getItem("token");
+
   const headers = {
-    'Content-Type': 'application/json'
+    "Content-Type": "application/json",
   };
+
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    headers.Authorization = `Bearer ${token}`;
   }
+
   return headers;
 };
 
 const handleResponse = async (response) => {
   const data = await response.json().catch(() => ({}));
+
   if (!response.ok) {
-    const error = new Error(data.message || `Request failed with status ${response.status}`);
+    const error = new Error(
+      data.message || `Request failed with status ${response.status}`
+    );
+
     error.status = response.status;
     error.data = data;
+
     throw error;
   }
+
   return data;
 };
 
 export const api = {
-  // Auth API
   async login(credentials) {
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(credentials)
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(credentials),
     });
+
     return handleResponse(response);
   },
 
   async register(userData) {
     const response = await fetch(`${API_BASE_URL}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(userData)
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(userData),
     });
+
     return handleResponse(response);
   },
 
   async getCurrentUser() {
-    const response = await fetch(`${API_BASE_URL}/auth/me`, {
-      method: 'GET',
-      headers: getHeaders()
+    const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+      method: "GET",
+      headers: getHeaders(),
     });
+
     return handleResponse(response);
   },
 
-  // Services API
   async getServices() {
     const response = await fetch(`${API_BASE_URL}/services`, {
-      method: 'GET',
-      headers: getHeaders()
+      method: "GET",
+      headers: getHeaders(),
     });
+
     return handleResponse(response);
   },
 
-  // Queue API
-  async getQueue(params = {}) {
-    const query = new URLSearchParams(params).toString();
-    const url = `${API_BASE_URL}/queue${query ? `?${query}` : ''}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: getHeaders()
+  async getQueue() {
+    const response = await fetch(`${API_BASE_URL}/tokens/queue`, {
+      method: "GET",
+      headers: getHeaders(),
     });
+
     return handleResponse(response);
   },
 
   async getMyTokens() {
-    const response = await fetch(`${API_BASE_URL}/queue/my`, {
-      method: 'GET',
-      headers: getHeaders()
+    const response = await fetch(`${API_BASE_URL}/tokens/my-tokens`, {
+      method: "GET",
+      headers: getHeaders(),
     });
+
     return handleResponse(response);
   },
 
   async createToken(payload) {
-    const response = await fetch(`${API_BASE_URL}/queue`, {
-      method: 'POST',
+    const response = await fetch(`${API_BASE_URL}/tokens`, {
+      method: "POST",
       headers: getHeaders(),
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
+
     return handleResponse(response);
   },
 
-  async callToken(tokenId, counterNumber) {
-    const response = await fetch(`${API_BASE_URL}/queue/${tokenId}/call`, {
-      method: 'PATCH',
+  async updateTokenStatus(tokenId, status) {
+    const response = await fetch(`${API_BASE_URL}/tokens/${tokenId}`, {
+      method: "PUT",
       headers: getHeaders(),
-      body: JSON.stringify({ counterNumber })
+      body: JSON.stringify({ status }),
     });
+
     return handleResponse(response);
+  },
+
+  async callToken(tokenId) {
+    return this.updateTokenStatus(tokenId, "called");
   },
 
   async completeToken(tokenId) {
-    const response = await fetch(`${API_BASE_URL}/queue/${tokenId}/complete`, {
-      method: 'PATCH',
-      headers: getHeaders()
-    });
-    return handleResponse(response);
+    return this.updateTokenStatus(tokenId, "completed");
   },
 
   async skipToken(tokenId) {
-    const response = await fetch(`${API_BASE_URL}/queue/${tokenId}/skip`, {
-      method: 'PATCH',
-      headers: getHeaders()
-    });
-    return handleResponse(response);
+    return this.updateTokenStatus(tokenId, "skipped");
   },
-
-  async getStats() {
-    const response = await fetch(`${API_BASE_URL}/queue/stats`, {
-      method: 'GET',
-      headers: getHeaders()
-    });
-    return handleResponse(response);
-  }
 };

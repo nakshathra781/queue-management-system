@@ -37,31 +37,52 @@ const generateToken = async (req, res) => {
       status: "waiting",
     });
 
-    const totalTokensToday = await Token.countDocuments({
-      createdAt: {
-        $gte: new Date(new Date().setHours(0, 0, 0, 0)),
-      },
-    });
+    /*
+      Generate the next token number safely.
 
-    const tokenNumber = `T${String(totalTokensToday + 1).padStart(3, "0")}`;
+      We read the latest created token instead of counting today's tokens,
+      because tokenNumber may be unique in MongoDB. Resetting to T001 each
+      day can cause a duplicate-key error.
+    */
+    const latestToken = await Token.findOne()
+      .sort({ createdAt: -1 })
+      .select("tokenNumber");
+
+    let nextTokenNumber = 1;
+
+    if (latestToken?.tokenNumber) {
+      const numericPart = parseInt(
+        latestToken.tokenNumber.replace(/\D/g, ""),
+        10
+      );
+
+      if (!Number.isNaN(numericPart)) {
+        nextTokenNumber = numericPart + 1;
+      }
+    }
+
+    const tokenNumber = `T${String(nextTokenNumber).padStart(3, "0")}`;
 
     const token = await Token.create({
       tokenNumber,
       user: req.user._id,
       service: serviceId,
       queuePosition: waitingCount + 1,
+      status: "waiting",
     });
 
     const populatedToken = await Token.findById(token._id)
       .populate("user", "name email")
       .populate("service", "name averageServiceTime");
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Token generated successfully",
       token: populatedToken,
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Generate token error:", error);
+
+    return res.status(500).json({
       message: "Failed to generate token",
       error: error.message,
     });
@@ -77,19 +98,21 @@ const getMyTokens = async (req, res) => {
       .populate("service", "name averageServiceTime")
       .sort({ createdAt: -1 });
 
-    res.status(200).json({
+    return res.status(200).json({
       count: tokens.length,
       tokens,
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Get my tokens error:", error);
+
+    return res.status(500).json({
       message: "Failed to fetch tokens",
       error: error.message,
     });
   }
 };
 
-// Admin views complete queue
+// Admin views the active queue
 const getQueue = async (req, res) => {
   try {
     const tokens = await Token.find({
@@ -99,17 +122,21 @@ const getQueue = async (req, res) => {
       .populate("service", "name averageServiceTime")
       .sort({ createdAt: 1 });
 
-    res.status(200).json({
+    return res.status(200).json({
       count: tokens.length,
       tokens,
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Get queue error:", error);
+
+    return res.status(500).json({
       message: "Failed to fetch queue",
       error: error.message,
     });
   }
 };
+
+// Admin updates a token's status
 const updateTokenStatus = async (req, res) => {
   try {
     const { status } = req.body;
@@ -146,18 +173,28 @@ const updateTokenStatus = async (req, res) => {
       token.completedAt = new Date();
     }
 
+    if (status === "skipped") {
+      token.skippedAt = new Date();
+    }
+
+    if (status === "cancelled") {
+      token.cancelledAt = new Date();
+    }
+
     await token.save();
 
     const updatedToken = await Token.findById(token._id)
       .populate("user", "name email")
       .populate("service", "name averageServiceTime");
 
-    res.status(200).json({
+    return res.status(200).json({
       message: `Token marked as ${status}`,
       token: updatedToken,
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Update token status error:", error);
+
+    return res.status(500).json({
       message: "Failed to update token status",
       error: error.message,
     });
